@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Time Slot Picker",
+  "version": "0.1.0",
+  "description": "Click time slots in Google Calendar, copy as text.",
+  "host_permissions": ["https://calendar.google.com/*"],
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["https://calendar.google.com/*"],
+      "js": [
+        "time-utils.js",
+        "storage.js",
+        "grid-anchor.js",
+        "capture-overlay.js",
+        "content.js"
+      ],
+      "css": ["sidebar.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "action": {
+    "default_title": "Time Slot Picker"
+  }
+}

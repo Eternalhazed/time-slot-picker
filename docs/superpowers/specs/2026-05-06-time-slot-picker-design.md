@@ -31,18 +31,18 @@ The user previously had a Chrome extension that allowed clicking time slots on G
 
 ## Architecture
 
-Manifest V3 Chrome extension, content-script-heavy. Auto-injects on `https://calendar.google.com/*`. The sidebar UI lives inside the page (not a popup); a transparent capture overlay activates only when "Select Mode" is on. State persists in `chrome.storage.local`. A service worker exists only to forward toolbar-icon clicks into the active tab.
+Manifest V3 Chrome extension, content-script-heavy. Auto-injects on `https://calendar.google.com/*`. The sidebar UI lives inside the page (not a popup); a transparent capture overlay activates only when "Select Mode" is on. State persists in `chrome.storage.local`, lightly namespaced by Google Calendar account path so work and personal calendar picks do not mix. A service worker exists only to forward toolbar-icon clicks into the active tab.
 
 All Google-Calendar-specific DOM knowledge lives in a single module (`grid-anchor.js`). Every other component takes the grid element or a `Date` as input and stays oblivious to Google's markup.
 
 ## Components
 
-1. **`content.js`** — entrypoint and lifecycle. Detects we're on Google Calendar, mounts the sidebar, runs grid detection, listens for view changes, wires storage.
+1. **`content.js`** — entrypoint and lifecycle. Detects we're on Google Calendar, determines the active account scope from the URL path (for example `/u/0/`), mounts the sidebar, runs grid detection, listens for view changes, wires storage.
 2. **`sidebar/`** — vanilla HTML/CSS/JS panel (no React; tiny bundle, no Shadow DOM friction). Right edge of viewport, ~320 px wide, collapsible. Contains duration buttons (15/30/45/60), Select Mode toggle, timezone dropdown, live output `<pre>` block, Copy and Clear buttons.
 3. **`grid-anchor.js`** — the only file coupled to Google's DOM. Priority-ordered selectors and heuristics to find the time-grid container. Falls back through 3–4 strategies before declaring "grid not found." Re-runs on view change and via `MutationObserver` for major DOM updates.
-4. **`capture-overlay.js`** — transparent absolutely-positioned `<div>` over the grid. Created when Select Mode is on; removed when off. Captures `pointerdown`, computes pixel-relative coordinates, hands them to time-utils, applies the resulting slot.
-5. **`time-utils.js`** — pure time math. No DOM. Functions: `pixelToTime(y, calibration)`, `pixelToDate(x, weekStart, dayCount)`, `snapToIncrement(time, minutes)`, `formatOutput(selections, timezone)`, `groupByDay(selections)`. Times stored and operated on as UTC; conversion to display zone happens only at format time.
-6. **`storage.js`** — thin wrapper around `chrome.storage.local`. One read on load, debounced writes on change. Subscribes to `chrome.storage.onChanged` to sync across tabs.
+4. **`capture-overlay.js`** — transparent absolutely-positioned `<div>` over the grid. Created when Select Mode is on; removed when off. Captures `pointerdown`, passes `event.clientX/clientY` plus current grid calibration to time-utils, applies the resulting slot.
+5. **`time-utils.js`** — pure time math. No DOM. Functions: `clientPointToTime(clientY, calibration)`, `clientPointToDate(clientX, columnBounds)`, `snapToIncrement(time, minutes)`, `formatOutput(selections, timezone)`, `groupByDay(selections)`. Times stored and operated on as UTC; conversion to display zone happens only at format time.
+6. **`storage.js`** — thin wrapper around `chrome.storage.local`. One read on load for the active account scope, debounced writes on change. Subscribes to `chrome.storage.onChanged` to sync across tabs using the same account scope.
 
 ## Data Model
 
@@ -50,27 +50,34 @@ Stored in `chrome.storage.local`:
 
 ```json
 {
-  "selections": [
-    { "id": "uuid", "startUTC": "2026-05-07T13:00:00Z", "endUTC": "2026-05-07T13:30:00Z" }
-  ],
-  "preferredTimezone": "America/New_York",
+  "accountScopes": {
+    "u/0": {
+      "selections": [
+        { "id": "uuid", "startUTC": "2026-05-07T13:00:00Z", "endUTC": "2026-05-07T13:30:00Z" }
+      ]
+    }
+  },
+  "calendarTimezone": "America/New_York",
+  "outputTimezone": "America/New_York",
   "lastDuration": 30,
   "sidebarOpen": true,
   "selectModeOn": false
 }
 ```
 
-All times are stored in UTC ISO-8601. Display-zone conversion happens at format time only.
+All times are stored in UTC ISO-8601. The selected wall-clock time is interpreted using `calendarTimezone`, then converted to UTC. Output conversion uses `outputTimezone` only and never mutates stored selections.
+
+The account scope is intentionally simple for v1: use the visible Google Calendar account path (`/u/0/`, `/u/1/`, etc.). If no account segment is present, fall back to `"default"`. The sidebar shows a small scope label such as "Calendar: u/0" so it is obvious which stored selection set is active.
 
 ## Click-to-Storage Pipeline
 
 ```
 pointerdown on overlay
-  → grid-relative (x, y)
-  → pixelToTime(y, calibration)        → "9:07 AM"
-  → pixelToDate(x, weekStart, dayCount) → "Tue, May 7"
+  → viewport coordinates (clientX, clientY)
+  → clientPointToTime(clientY, calibration) → "9:07 AM"
+  → clientPointToDate(clientX, columnBounds) → "Tue, May 7"
   → snapToIncrement(time, 15)           → "9:00 AM"
-  → buildSlot(date, time, duration)     → { startUTC, endUTC }
+  → buildSlot(date, time, duration, calendarTimezone) → { startUTC, endUTC }
   → collisionCheck against existing
       ├─ same start as existing slot → remove (toggle off)
       ├─ overlaps a different slot   → red flash, ignore
@@ -87,7 +94,7 @@ Anchor on hour labels in the time gutter (rather than total grid height, which i
 4. Compute `pixelsPerHour = (label2.top − label1.top) / (hour2 − hour1)`
 5. Compute `gridStartTime = label1.hour − (label1.top − gridRect.top) / pixelsPerHour`
 
-Any click `y` then maps to `gridStartTime + (y − gridRect.top + scrollTop) / pixelsPerHour`. Recalibrate on view change, window resize, and grid-internal scroll.
+Coordinate contract: conversion functions receive viewport coordinates from the pointer event (`clientX/clientY`), not pre-normalized overlay coordinates. Any click `clientY` maps to `gridStartTime + (clientY − gridRect.top + scrollTop) / pixelsPerHour`. Keeping the normalization in one function prevents scroll and overlay-position drift. Recalibrate on view change, window resize, and grid-internal scroll.
 
 ### Date Axis (Week View)
 
@@ -124,10 +131,12 @@ Implementation:
 
 ## Timezone Behavior
 
-- Default zone: `Intl.DateTimeFormat().resolvedOptions().timeZone` (browser's local).
+- `calendarTimezone`: the source timezone used to turn clicked calendar wall time into UTC. Default to `Intl.DateTimeFormat().resolvedOptions().timeZone` (browser's local) and show it near Select Mode as "Calendar timezone: America/New_York." This is a lightweight confirmation, not a setup wizard.
+- `outputTimezone`: the timezone used for copied text. Defaults to the same value as `calendarTimezone`.
 - Dropdown options: detected zone (marked default) + ET / PT / CT / MT / UTC / GMT / CET / JST.
 - "Add zone…" opens a search input over `Intl.supportedValuesOf('timeZone')` (~600 IANA zones in modern browsers).
-- Toggling the zone re-renders the output only. Stored UTC is never mutated.
+- Toggling the output zone re-renders the output only. Stored UTC is never mutated.
+- If the user travels or their Google Calendar timezone differs from the browser timezone, they can change `calendarTimezone` from the same zone picker before selecting slots. Existing selections keep their stored UTC values.
 
 ## Edge Cases & Failure Modes
 
@@ -138,10 +147,10 @@ Implementation:
 | Month view active | Sidebar message: "Switch to Week or Day view to select slots." Existing selections still display in output. |
 | User scrolls the day vertically | Capture overlay sticky-positioned to grid; selection blocks reposition via grid scroll listener. |
 | Window resize / zoom change | Recompute calibration on `resize`; re-render selection blocks. |
-| DST transition week | Stored UTC unaffected. `Intl.DateTimeFormat` with the IANA zone handles DST correctly at format time. Tested explicitly. |
+| DST transition week | Convert clicked wall time through `calendarTimezone`, store UTC, and format through `outputTimezone`. Pin spring-forward and fall-back behavior in unit tests. |
 | Slot crosses midnight | Clamp `endUTC` to end-of-day; tooltip notification. |
 | SPA navigation within calendar.google.com | Content script stays loaded; re-runs grid detection on URL change via `History API` polling. |
-| Different account paths (`/u/0/`, `/u/1/`) | Match pattern is `https://calendar.google.com/*`, covers all account paths. |
+| Different account paths (`/u/0/`, `/u/1/`) | Match pattern is `https://calendar.google.com/*`, covers all account paths. Storage is keyed by the active account path so selections do not mix between accounts. |
 | Storage quota | Each slot is ~120 bytes; 5 MB quota = ~40K slots. Non-issue. |
 | Multiple Google Calendar tabs open | Each tab has its own content-script instance; selections sync via `chrome.storage.onChanged`. |
 
@@ -157,18 +166,24 @@ Implementation:
   "permissions": ["storage"],
   "content_scripts": [{
     "matches": ["https://calendar.google.com/*"],
-    "js": ["content.js"],
+    "js": [
+      "time-utils.js",
+      "storage.js",
+      "grid-anchor.js",
+      "capture-overlay.js",
+      "content.js"
+    ],
     "css": ["sidebar.css"],
     "run_at": "document_idle"
   }],
   "background": { "service_worker": "sw.js" },
-  "action": { "default_icon": { "16": "icons/16.png", "48": "icons/48.png" } },
-  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+  "action": { "default_title": "Time Slot Picker" }
 }
 ```
 
 What's deliberately absent:
 
+- **No build step required for v1** — files load as classic content scripts in manifest order. If the project later wants modules or bundling, switch to one generated `content.bundle.js`.
 - **No `clipboardWrite`** — `navigator.clipboard.writeText()` works without it on user gesture.
 - **No `tabs`** — `chrome.action.onClicked` provides the tab automatically.
 - **No `<all_urls>`** — extension only ever runs on `calendar.google.com`.
@@ -179,8 +194,10 @@ What's deliberately absent:
 ### Unit (Vitest)
 Pure functions in `time-utils.js`:
 
-- `pixelToTime` across calibrations including degenerate inputs (negative y, zero `pixelsPerHour`)
+- `clientPointToTime` across calibrations including degenerate inputs (negative y, zero `pixelsPerHour`, scrolled grid)
+- `clientPointToDate` against 5-day and 7-day column bounds
 - `snapToIncrement` at boundaries (9:07 → 9:00; 9:08 → 9:15)
+- `buildSlot` converts `calendarTimezone` wall time to UTC and clamps midnight-crossing slots
 - `groupByDay` and `formatOutput` across:
   - DST spring-forward week (slot at 2:30 AM on the spring-forward day — should not exist; formatter handles gracefully)
   - DST fall-back week (slot at 1:30 AM on fall-back day is ambiguous — wall-clock 1:30 AM occurs twice). v1 chooses the **second occurrence** (standard time, after the clock rolls back). Pin this in a test.
@@ -190,6 +207,7 @@ Pure functions in `time-utils.js`:
 ### Integration (jsdom)
 - `grid-anchor` against `fixtures/calendar-week-view.html`, a saved snapshot of `calendar.google.com`
 - Assert it finds the grid container and at least 2 hour labels
+- Assert viewport-coordinate conversion stays stable when the grid is scrolled
 - When this fails, that's the canary for "Google changed their DOM" — re-record fixture, fix selectors
 
 ### Manual Checklist (`docs/MANUAL_TESTS.md`)
@@ -198,7 +216,9 @@ Things jsdom can't fake:
 - Load unpacked → calendar.google.com
 - Place slot → reload page → still there
 - Toggle timezone → output text updates correctly
+- Confirm calendar timezone label before selecting
 - Switch week ↔ day view → selections still aligned
+- Open `/u/0/` and `/u/1/` paths → selections are separate
 - Click already-selected slot → it disappears
 - Click overlapping slot → red flash, no add
 - Sidebar collapse / expand persists across reloads
