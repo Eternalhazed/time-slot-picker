@@ -5,6 +5,12 @@ A Chrome extension that turns your Google Calendar into a click-to-share availab
 **Before:** "I'm free Tuesday 2–3 PM ET, or Wednesday 10–11 AM ET, or..."
 **After:** Click. Click. Click. Copy. Done.
 
+<p align="center">
+  <img src="docs/sidebar.png" alt="Time Slot Picker sidebar docked next to Google Calendar — duration buttons, timezone and format controls, slot list, and Copy button." width="320">
+</p>
+
+The sidebar docks beside your calendar. Pick a duration, click slots on the grid, copy the result.
+
 ---
 
 ## Install
