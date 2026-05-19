@@ -6,12 +6,23 @@ A Chrome extension that turns your Google Calendar into a click-to-share availab
 **After:** Click. Click. Click. Copy. Done.
 
 <p align="center">
-  <img src="docs/sidebar.png" alt="Time Slot Picker sidebar docked next to Google Calendar — duration buttons, timezone and format controls, slot list, and Copy button." width="240">
+  <img src="docs/sidebar.png" alt="Time Slot Picker sidebar docked next to Google Calendar — duration buttons, timezone and format controls, slot list, and Copy button." width="280">
 </p>
 
 The sidebar docks beside your calendar. Pick a duration, click slots on the grid, copy the result.
 
----
+## Example output
+
+```
+Does a time in here work for you? Just let me know and I'll fire over an invite!
+
+Tue, May 20
+  2:00 – 3:00 PM ET
+
+Wed, May 21
+  10:00 – 11:00 AM ET
+  3:00 – 4:00 PM ET
+```
 
 ## Install
 
@@ -25,8 +36,6 @@ Not on the Chrome Web Store — load it unpacked:
 
 The toolbar icon shows or hides the sidebar.
 
----
-
 ## How to use
 
 1. **Pick a duration** — 15, 30, 45, or 60 minutes
@@ -35,36 +44,19 @@ The toolbar icon shows or hides the sidebar.
 4. **Set the output timezone** if you're sharing across zones
 5. **Hit Copy** and paste anywhere
 
-### Example output
-
-```
-Does a time in here work for you? Just let me know and I'll fire over an invite!
-
-Tue, May 20
-  2:00 – 3:00 PM ET
-
-Wed, May 21
-  10:00 – 11:00 AM ET
-  3:00 – 4:00 PM ET
-```
-
----
-
 ## Features
 
+- **DST-safe timezone conversion** — set calendar and output zones independently; no fragile offset math
+- **Multi-account aware** — selections stay scoped per Google account
+- **No build, no dependencies, no tracking** — vanilla JS, runs entirely in your browser
 - **Click to select, click to deselect** — directly on the calendar grid
 - **Custom intro message** — add a personal note above your slots
-- **DST-safe timezone conversion** — set calendar and output zones independently; no fragile offset math
 - **12h / 24h clock** — your call
 - **Optional date headers and zone labels** — keep them or strip them
 - **Past slot pruning** — expired slots disappear from the copy automatically; one click clears them from the list
 - **Undo** — `Ctrl+Z` or the ↶ button
-- **Multi-account aware** — selections stay scoped per Google account
 - **Persistent** — selections survive refreshes and tab closes
 - **Dark mode** — follows your system
-- **No build, no dependencies, no tracking** — vanilla JS, runs entirely in your browser
-
----
 
 ## Keyboard shortcuts
 
@@ -74,8 +66,6 @@ Wed, May 21
 | `Ctrl+Z` | Undo last change |
 | `Esc` | Exit Select Mode |
 
----
-
 ## Permissions
 
 | Permission | Why |
@@ -84,8 +74,6 @@ Wed, May 21
 | `scripting` | Re-attach to Calendar tabs that were already open before install |
 
 No network requests. Nothing leaves your browser.
-
----
 
 ## Development
 
@@ -102,8 +90,6 @@ For UI work without a live Calendar tab, there's a visual harness at `docs/visua
 python -m http.server --bind 127.0.0.1 8765
 # open http://127.0.0.1:8765/docs/visual-harness.html
 ```
-
----
 
 ## Contributing
 
