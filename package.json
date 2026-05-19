@@ -1,0 +1,15 @@
+{
+  "name": "time-slot-picker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal Chrome extension for copying selected Google Calendar time slots.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@vitest/ui": "^3.2.4",
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}

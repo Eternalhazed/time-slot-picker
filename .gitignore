@@ -1,0 +1,11 @@
+node_modules/
+.vitest/
+
+# Extension private key — never commit this
+extension.pem
+extension.crx
+
+# Internal agent/AI instruction files
+CLAUDE.md
+AGENTS.md
+.claude/

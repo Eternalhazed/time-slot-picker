@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Click time slots in Google Calendar, copy as text.",
   "host_permissions": ["https://calendar.google.com/*"],
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "content_scripts": [
     {
       "matches": ["https://calendar.google.com/*"],
